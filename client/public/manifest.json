@@ -1,10 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "React Chrome Extension",
+  "name": "AI Bookmark Manager",
   "version": "1.0.0",
-  "description": "A simple React app as a Chrome extension",
-  "action": {
-    "default_popup": "index.html"
+  "description": "A Chrome extension to manage bookmarks with AI assistance.",
+  "icons": {
+    "48": "icons/bookmarks.png",
+    "96": "icons/bookmarks@2x.png"
   },
-  "permissions": ["bookmarks"]
+  "action": {
+    "default_icon": "icons/star-empty-38.png",
+    "default_title": "AI Bookmark Manager"
+  },
+  "permissions": ["bookmarks", "tabs", "notifications"],
+  "background": {
+    "type": "module",
+    "service_worker": "background.js"
+  }
 }
