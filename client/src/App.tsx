@@ -1,7 +1,7 @@
 import { useChat } from "@ai-sdk/react"
-import { getPaths } from "./helpers/getPaths"
 import { addBookmark } from "./helpers/addBookmark"
 import { useState } from "react"
+import { getCategory } from "./helpers/getCategory"
 
 function App() {
   const [bookmarkUrl, setBookmarkUrl] = useState("")
@@ -18,26 +18,7 @@ function App() {
       try {
         setAddResult("Processing bookmark...")
 
-        // Get available bookmark paths
-        const paths = await getPaths()
-
-        // Get categorization from the API
-        const response = await fetch("http://localhost:8080/api/categorize", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: bookmarkUrl,
-            categories: paths,
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error(`API returned status code ${response.status}`)
-        }
-
-        const result = await response.json()
+        const result = await getCategory(bookmarkUrl)
         console.log("Categorization result:", result)
 
         // Add the bookmark using the categorization result
