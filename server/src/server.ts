@@ -29,11 +29,16 @@ app.post("/api/chat", async (req: Request, res: Response) => {
 })
 
 app.post("/api/categorize", async (req: Request, res: Response) => {
-  const { url, categories } = req.body
+  const { url, title, categories } = req.body
 
   // Validate inputs
   if (!url) {
     res.status(400).send("Bad Request: Missing URL")
+    return
+  }
+
+  if (!title) {
+    res.status(400).send("Bad Request: Missing title")
     return
   }
 
@@ -57,7 +62,6 @@ app.post("/api/categorize", async (req: Request, res: Response) => {
   }
 
   // Fetch and extract metadata
-  let title: string = ""
   let description: string = ""
 
   try {
@@ -80,7 +84,6 @@ app.post("/api/categorize", async (req: Request, res: Response) => {
 
     const html = await response.text()
     const $ = cheerio.load(html)
-    title = $("title").text() || "No title found"
     description =
       $('meta[name="description"]').attr("content") || "No description found"
   } catch (error) {

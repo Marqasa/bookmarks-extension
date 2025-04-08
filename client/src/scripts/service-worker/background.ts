@@ -42,7 +42,7 @@ async function toggleBookmark() {
       priority: 0,
     })
   } else if (currentTab.url) {
-    const result = await getCategory(currentTab.url)
+    const result = await getCategory(currentTab.url, currentTab.title ?? "")
     addBookmark(
       result.url || currentTab.url,
       result.title || currentTab.title,
