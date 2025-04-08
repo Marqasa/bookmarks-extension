@@ -1,5 +1,5 @@
-import { addBookmark } from "../../helpers/addBookmark"
 import { getCategory } from "../../helpers/getCategory"
+import { moveBookmark } from "../../helpers/moveBookmark"
 
 let currentTab: chrome.tabs.Tab
 let currentBookmark: chrome.bookmarks.BookmarkTreeNode | undefined
@@ -42,21 +42,46 @@ async function toggleBookmark() {
       priority: 0,
     })
   } else if (currentTab.url) {
-    const result = await getCategory(currentTab.url, currentTab.title ?? "")
-    addBookmark(
-      result.url || currentTab.url,
-      result.title || currentTab.title,
-      result.category || "",
-    )
+    // First, create the bookmark immediately without waiting for the category
+    const initialBookmark = await chrome.bookmarks.create({
+      title: currentTab.title || "",
+      url: currentTab.url,
+    })
+
+    // Show initial notification
     chrome.notifications.create({
       type: "basic",
       iconUrl: "icons/star-filled-38.png",
       title: "Bookmark Added",
-      message: result.category
-        ? `Bookmark added to category: ${result.category}`
-        : "Bookmark has been added successfully.",
+      message: "Bookmark has been added. Categorizing...",
       priority: 0,
     })
+
+    // Then, get the category in the background
+    getCategory(currentTab.url, currentTab.title ?? "")
+      .then((result) => {
+        // If we got a category, move the bookmark to the appropriate folder
+        if (result.category) {
+          // Update the bookmark with any improved title/url from the API
+          moveBookmark(initialBookmark.id, result.category)
+
+          // Show category notification
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: "icons/star-filled-38.png",
+            title: "Bookmark Categorized",
+            message: `Bookmark moved to category: ${result.category}`,
+            priority: 0,
+          })
+        }
+      })
+      .catch((error) => {
+        console.error("Error categorizing bookmark:", error)
+      })
+
+    // Update currentBookmark to reflect the newly added bookmark
+    currentBookmark = initialBookmark
+    updateIcon()
   }
 }
 
