@@ -1,6 +1,7 @@
 import "dotenv/config"
 import { CoreMessage, generateObject, streamText } from "ai"
 import { openai } from "@ai-sdk/openai"
+import { z } from "zod"
 import * as cheerio from "cheerio"
 import bodyParser from "body-parser"
 import cors from "cors"
@@ -42,11 +43,6 @@ app.post("/api/categorize", async (req: Request, res: Response) => {
     return
   }
 
-  if (!categories || !Array.isArray(categories) || categories.length === 0) {
-    res.status(400).send("Bad Request: Missing or invalid categories")
-    return
-  }
-
   // Validate URL
   let parsedUrl: URL
   try {
@@ -62,7 +58,7 @@ app.post("/api/categorize", async (req: Request, res: Response) => {
   }
 
   // Fetch and extract metadata
-  let description: string = ""
+  let description: string = "No description found"
 
   try {
     // Add timeout to fetch
@@ -77,41 +73,49 @@ app.post("/api/categorize", async (req: Request, res: Response) => {
     })
     clearTimeout(timeoutId)
 
-    if (!response.ok) {
-      res.status(500).send("Error: Could not fetch URL")
-      return
+    if (response.ok) {
+      const html = await response.text()
+      const $ = cheerio.load(html)
+      description =
+        $('meta[name="description"]').attr("content") || "No description found"
     }
-
-    const html = await response.text()
-    const $ = cheerio.load(html)
-    description =
-      $('meta[name="description"]').attr("content") || "No description found"
   } catch (error) {
     console.error("Error processing URL:", error)
-    res.status(500).send("Error processing URL")
-    return
   }
 
   try {
+    let categoriesPrompt = ""
+    if (categories && Array.isArray(categories) && categories.length > 0) {
+      categoriesPrompt = `Existing categories:\n${categories.join("\n")}
+
+If one of the existing categories fits well, use it exactly as written. Otherwise, create an appropriate category path.`
+    }
+
+    const prompt = `You are an expert bookmark categorizer. Your task is to analyze the following webpage information and categorize it appropriately.
+
+URL: ${url}
+Title: ${title}
+Description: ${description}
+
+${categoriesPrompt}
+
+Create a category path using '/' as a separator (e.g. 'Category/Subcategory').
+The path should be hierarchical, starting with a general category and getting more specific.
+Keep the category names concise but descriptive, and limit the path to 1-3 levels.`
+
     const { object } = await generateObject({
-      model: openai("gpt-4o-mini"),
-      output: "enum",
-      enum: categories,
-      prompt: `You are an expert bookmark categorizer. Your task is to analyze the following webpage information and categorize it into the most appropriate single category from the provided list.
-
-      URL: ${url}
-      Title: ${title}
-      Description: ${description}
-
-      Choose the SINGLE most relevant category from the list. Consider the content, purpose, and topic of the webpage. Return only the category name exactly as it appears in the list.`,
+      model: openai.responses("gpt-4o-mini"),
+      schema: z.object({
+        categoryPath: z
+          .string()
+          .describe(
+            "The category path for the bookmark using '/' as a separator (e.g. 'Category/Subcategory')."
+          ),
+      }),
+      prompt,
     })
 
-    res.json({
-      category: object,
-      url,
-      title,
-      description,
-    })
+    res.json(object.categoryPath)
   } catch (error) {
     console.error("AI categorization error:", error)
     res.status(500).send("Error categorizing URL")

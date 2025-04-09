@@ -60,20 +60,17 @@ async function toggleBookmark() {
     // Then, get the category in the background
     getCategory(currentTab.url, currentTab.title ?? "")
       .then((result) => {
-        // If we got a category, move the bookmark to the appropriate folder
-        if (result.category) {
-          // Update the bookmark with any improved title/url from the API
-          moveBookmark(initialBookmark.id, result.category)
+        // Update the bookmark with any improved title/url from the API
+        moveBookmark(initialBookmark.id, result)
 
-          // Show category notification
-          chrome.notifications.create({
-            type: "basic",
-            iconUrl: "icons/star-filled-38.png",
-            title: "Bookmark Categorized",
-            message: `Bookmark moved to category: ${result.category}`,
-            priority: 0,
-          })
-        }
+        // Show category notification
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: "icons/star-filled-38.png",
+          title: "Bookmark Categorized",
+          message: `Bookmark moved to category: ${result}`,
+          priority: 0,
+        })
       })
       .catch((error) => {
         console.error("Error categorizing bookmark:", error)
