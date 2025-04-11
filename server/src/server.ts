@@ -1,5 +1,6 @@
 import "dotenv/config"
 import { CoreMessage, generateObject, streamText } from "ai"
+import { FolderStructure } from "shared/types/FolderStructure"
 import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 import * as cheerio from "cheerio"
@@ -30,7 +31,11 @@ app.post("/api/chat", async (req: Request, res: Response) => {
 })
 
 app.post("/api/categorize", async (req: Request, res: Response) => {
-  const { url, title, categories } = req.body
+  const { url, title, folderStructure } = req.body as {
+    url: string
+    title: string
+    folderStructure?: FolderStructure
+  }
 
   // Validate inputs
   if (!url) {
@@ -84,11 +89,19 @@ app.post("/api/categorize", async (req: Request, res: Response) => {
   }
 
   try {
-    let categoriesPrompt = ""
-    if (categories && Array.isArray(categories) && categories.length > 0) {
-      categoriesPrompt = `Existing categories:\n${categories.join("\n")}
+    // Process folder structure for the prompt
+    let folderStructurePrompt = ""
+    if (folderStructure && typeof folderStructure === "object") {
+      folderStructurePrompt = `Existing folder structure:\n${formatFolderStructure(
+        folderStructure
+      )}
 
-If one of the existing categories fits well, use it exactly as written. Otherwise, create an appropriate category path.`
+The above represents the folder hierarchy in a tree-like format:
+- Root folders appear without any prefix
+- Subfolders are preceded by "├─" with additional "│" characters showing the nesting level
+- To reference a complete path, combine the folder names with "/" separators (e.g., "Category/Subcategory")
+
+If one of the existing folders or subfolders fits well, use the full path (e.g., 'Category/Subcategory') for that section of the tree. Otherwise, create an appropriate category path.`
     }
 
     const prompt = `You are an expert bookmark categorizer. Your task is to analyze the following webpage information and categorize it appropriately.
@@ -97,11 +110,15 @@ URL: ${url}
 Title: ${title}
 Description: ${description}
 
-${categoriesPrompt}
+${folderStructurePrompt}
 
 Create a category path using '/' as a separator (e.g. 'Category/Subcategory').
 The path should be hierarchical, starting with a general category and getting more specific.
-Keep the category names concise but descriptive, and limit the path to 1-3 levels.`
+Keep the category names concise but descriptive, and limit the path to 1-3 levels.${
+      folderStructure
+        ? "\nIf possible, use existing folders from the provided structure."
+        : ""
+    }`
 
     const { object } = await generateObject({
       model: openai.responses("gpt-4o-mini"),
@@ -122,6 +139,31 @@ Keep the category names concise but descriptive, and limit the path to 1-3 level
     return
   }
 })
+
+/**
+ * Formats the folder structure into a concise string representation with clear hierarchy
+ * @param structure - The folder structure object
+ * @param level - Current indentation level (used in recursion)
+ * @returns Formatted string representation of the folder structure
+ */
+function formatFolderStructure(
+  structure: FolderStructure,
+  level: number = 0
+): string {
+  let result = ""
+
+  for (const [folderName, subFolders] of Object.entries(structure)) {
+    // Use explicit hierarchy markers instead of relying on whitespace
+    const prefix = level === 0 ? "" : "│".repeat(level - 1) + "├─"
+    result += `${prefix}${folderName}\n`
+
+    if (typeof subFolders === "object" && Object.keys(subFolders).length > 0) {
+      result += formatFolderStructure(subFolders, level + 1)
+    }
+  }
+
+  return result
+}
 
 app.listen(8080, () => {
   console.log(`Server is running on http://localhost:8080`)

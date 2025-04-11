@@ -1,14 +1,14 @@
-import { getPaths } from "./getPaths"
+import { getFolderStructure } from "./getFolderStructure"
 
 /**
  * Categorizes a URL by sending it to the categorization API
  * @param url - URL to categorize
  * @param title - Title of the webpage
- * @returns Categorization result
+ * @returns Categorization result as category path string
  */
-export async function getCategory(url: string, title: string) {
-  // Get available category paths
-  const categories = await getPaths()
+export async function getCategory(url: string, title: string): Promise<string> {
+  // Get folder structure
+  const folderStructure = await getFolderStructure()
 
   // Send categorization request to API
   const response = await fetch("http://localhost:8080/api/categorize", {
@@ -19,7 +19,7 @@ export async function getCategory(url: string, title: string) {
     body: JSON.stringify({
       url,
       title,
-      categories,
+      folderStructure,
     }),
   })
 

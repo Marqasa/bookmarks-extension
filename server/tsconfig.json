@@ -10,9 +10,13 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "moduleResolution": "node",
-    "rootDir": "./src",
+    "rootDir": "../",
     "outDir": "./build",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": "../",
+    "paths": {
+      "shared/*": ["shared/*"]
+    }
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "../shared/**/*.ts"]
 }
