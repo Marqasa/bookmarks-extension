@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react"
 import { categorizeBookmark } from "./helpers/categorizeBookmark"
+import { sortBookmarks, SortMode } from "./helpers/sortBookmarks"
 
 function App() {
   const [currentTab, setCurrentTab] = useState<chrome.tabs.Tab | null>(null)
   const [currentBookmark, setCurrentBookmark] =
     useState<chrome.bookmarks.BookmarkTreeNode | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
-  const [keepOrganized, setKeepOrganized] = useState<boolean>(false)
-  const [foldersOnTop, setFoldersOnTop] = useState<boolean>(true)
+  const [autoSort, setAutoSort] = useState<boolean>(false)
+  const [sortMode, setSortMode] = useState<SortMode>("folders-first")
   const [categorizeBookmarks, setCategorizeBookmarks] = useState<boolean>(true)
 
   useEffect(() => {
@@ -29,14 +30,20 @@ function App() {
 
         // Load organization preferences from storage
         const result = await chrome.storage.sync.get({
-          keepOrganized: false,
-          foldersOnTop: true,
+          autoSort: false,
+          sortMode: "folders-first",
           categorizeBookmarks: true,
         })
 
-        setKeepOrganized(result.keepOrganized)
-        setFoldersOnTop(result.foldersOnTop)
+        setAutoSort(result.autoSort)
+        setSortMode(result.sortMode)
         setCategorizeBookmarks(result.categorizeBookmarks)
+
+        // Auto-sort bookmarks if enabled
+        if (result.autoSort) {
+          await sortBookmarks(result.sortMode)
+        }
+
         setIsLoading(false)
       } catch (error) {
         console.error("Error checking bookmark status:", error)
@@ -87,6 +94,15 @@ function App() {
           }
         }
 
+        // Sort bookmarks if auto-sort is enabled
+        if (autoSort) {
+          try {
+            await sortBookmarks(sortMode)
+          } catch (error) {
+            console.error("Error sorting bookmarks after adding:", error)
+          }
+        }
+
         setCurrentBookmark(newBookmark)
       }
 
@@ -97,14 +113,38 @@ function App() {
     }
   }
 
-  const handleToggleOrganize = async (value: boolean) => {
-    setKeepOrganized(value)
-    await chrome.storage.sync.set({ keepOrganized: value })
+  const handleToggleAutoSort = async (value: boolean) => {
+    setAutoSort(value)
+    await chrome.storage.sync.set({ autoSort: value })
+
+    // Sort bookmarks immediately when turned on
+    if (value) {
+      try {
+        setIsLoading(true)
+        await sortBookmarks(sortMode)
+        setIsLoading(false)
+      } catch (error) {
+        console.error("Error sorting bookmarks:", error)
+        setIsLoading(false)
+      }
+    }
   }
 
-  const handleToggleFoldersOnTop = async (value: boolean) => {
-    setFoldersOnTop(value)
-    await chrome.storage.sync.set({ foldersOnTop: value })
+  const handleChangeSortMode = async (value: SortMode) => {
+    setSortMode(value)
+    await chrome.storage.sync.set({ sortMode: value })
+
+    // Re-sort if auto-sort is enabled
+    if (autoSort) {
+      try {
+        setIsLoading(true)
+        await sortBookmarks(value)
+        setIsLoading(false)
+      } catch (error) {
+        console.error("Error sorting bookmarks:", error)
+        setIsLoading(false)
+      }
+    }
   }
 
   const handleToggleCategorize = async (value: boolean) => {
@@ -134,49 +174,51 @@ function App() {
         <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Keep bookmarks organized
+              Auto-categorize bookmarks
             </span>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
                 className="sr-only peer"
-                checked={keepOrganized}
-                onChange={(e) => handleToggleOrganize(e.target.checked)}
+                checked={categorizeBookmarks}
+                onChange={(e) => handleToggleCategorize(e.target.checked)}
               />
               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
             </label>
           </div>
 
-          {keepOrganized && (
-            <div className="pl-4 space-y-2 border-l-2 border-gray-200 dark:border-gray-700 ml-1 mt-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600 dark:text-gray-400">
-                  Keep folders on top
-                </span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={foldersOnTop}
-                    onChange={(e) => handleToggleFoldersOnTop(e.target.checked)}
-                  />
-                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
-                </label>
-              </div>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Auto-sort bookmarks
+            </span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={autoSort}
+                onChange={(e) => handleToggleAutoSort(e.target.checked)}
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
 
+          {autoSort && (
+            <div className="pl-4 space-y-2 border-l-2 border-gray-200 dark:border-gray-700 ml-1 mt-3 mb-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-600 dark:text-gray-400">
-                  Auto-categorize bookmarks
+                  Sort order
                 </span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={categorizeBookmarks}
-                    onChange={(e) => handleToggleCategorize(e.target.checked)}
-                  />
-                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
-                </label>
+                <select
+                  value={sortMode}
+                  onChange={(e) =>
+                    handleChangeSortMode(e.target.value as SortMode)
+                  }
+                  className="text-xs py-1 pl-2 pr-8 rounded bg-gray-100 border border-gray-300 text-gray-700 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="folders-first">Folders on top</option>
+                  <option value="bookmarks-first">Bookmarks on top</option>
+                  <option value="alphabetical">Alphabetical only</option>
+                </select>
               </div>
             </div>
           )}
