@@ -1,15 +1,18 @@
-import { useEffect, useState } from "react"
 import { categorizeBookmark } from "./helpers/categorizeBookmark"
+import { getBookmarkPath } from "./helpers/getBookmarkPath"
 import { sortBookmarks, SortMode } from "./helpers/sortBookmarks"
+import { useEffect, useState } from "react"
 
 function App() {
   const [currentTab, setCurrentTab] = useState<chrome.tabs.Tab | null>(null)
   const [currentBookmark, setCurrentBookmark] =
     useState<chrome.bookmarks.BookmarkTreeNode | null>(null)
+  const [bookmarkPath, setBookmarkPath] = useState<string>("")
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [autoSort, setAutoSort] = useState<boolean>(false)
   const [sortMode, setSortMode] = useState<SortMode>("folders-first")
   const [categorizeBookmarks, setCategorizeBookmarks] = useState<boolean>(true)
+  const [isRecategorizing, setIsRecategorizing] = useState<boolean>(false)
 
   useEffect(() => {
     const checkBookmarkStatus = async () => {
@@ -23,9 +26,19 @@ function App() {
 
         if (tab?.url) {
           const bookmarks = await chrome.bookmarks.search({ url: tab.url })
-          setCurrentBookmark(bookmarks.length > 0 ? bookmarks[0] : null)
+          const foundBookmark = bookmarks.length > 0 ? bookmarks[0] : null
+          setCurrentBookmark(foundBookmark)
+
+          // Fetch the bookmark path if bookmark exists
+          if (foundBookmark) {
+            const path = await getBookmarkPath(foundBookmark.id)
+            setBookmarkPath(path)
+          } else {
+            setBookmarkPath("")
+          }
         } else {
           setCurrentBookmark(null)
+          setBookmarkPath("")
         }
 
         // Load organization preferences from storage
@@ -70,6 +83,7 @@ function App() {
           priority: 0,
         })
         setCurrentBookmark(null)
+        setBookmarkPath("")
       } else {
         const newBookmark = await chrome.bookmarks.create({
           title: currentTab.title || "",
@@ -89,9 +103,16 @@ function App() {
         if (categorizeBookmarks) {
           try {
             await categorizeBookmark(currentTab.url, currentTab.title ?? "")
+
+            // Update bookmark path after categorization
+            const path = await getBookmarkPath(newBookmark.id)
+            setBookmarkPath(path)
           } catch (error) {
             console.error("Error categorizing bookmark:", error)
           }
+        } else {
+          // Set an empty path for uncategorized bookmarks
+          setBookmarkPath("")
         }
 
         // Sort bookmarks if auto-sort is enabled
@@ -152,6 +173,53 @@ function App() {
     await chrome.storage.sync.set({ categorizeBookmarks: value })
   }
 
+  const handleRecategorize = async () => {
+    if (!currentTab?.url || !currentBookmark) return
+
+    try {
+      setIsRecategorizing(true)
+
+      // Remove old bookmark
+      await chrome.bookmarks.remove(currentBookmark.id)
+
+      // Create new bookmark with auto-categorization
+      const newBookmark = await chrome.bookmarks.create({
+        title: currentTab.title || "",
+        url: currentTab.url,
+      })
+
+      await categorizeBookmark(currentTab.url, currentTab.title ?? "")
+
+      // Sort bookmarks if auto-sort is enabled
+      if (autoSort) {
+        try {
+          await sortBookmarks(sortMode)
+        } catch (error) {
+          console.error("Error sorting bookmarks after recategorizing:", error)
+        }
+      }
+
+      setCurrentBookmark(newBookmark)
+
+      // Update the bookmark path
+      const path = await getBookmarkPath(newBookmark.id)
+      setBookmarkPath(path)
+
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icons/star-filled-38.png",
+        title: "Bookmark Recategorized",
+        message: "The bookmark has been recategorized successfully.",
+        priority: 0,
+      })
+
+      setIsRecategorizing(false)
+    } catch (error) {
+      console.error("Error recategorizing bookmark:", error)
+      setIsRecategorizing(false)
+    }
+  }
+
   return (
     <div className="p-4 bg-gray-50 dark:bg-gray-900">
       <div className="min-w-[300px] max-w-full">
@@ -170,6 +238,24 @@ function App() {
               ? "Remove Bookmark"
               : "Add Bookmark"}
         </button>
+
+        {currentBookmark && (
+          <div className="mt-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-md">
+            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1.5">
+              Current category:
+            </div>
+            <div className="font-medium text-sm text-gray-800 dark:text-gray-200 mb-2 break-all">
+              {bookmarkPath || "Uncategorized"}
+            </div>
+            <button
+              onClick={handleRecategorize}
+              disabled={isRecategorizing}
+              className="w-full py-1.5 px-3 bg-indigo-100 text-indigo-700 dark:bg-indigo-600 dark:text-white hover:bg-indigo-200 dark:hover:bg-indigo-500 rounded text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-1"
+            >
+              {isRecategorizing ? "Recategorizing..." : "Recategorize Bookmark"}
+            </button>
+          </div>
+        )}
 
         <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
           <div className="flex items-center justify-between mb-3">
