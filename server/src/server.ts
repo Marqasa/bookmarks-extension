@@ -104,7 +104,7 @@ The above represents the folder hierarchy in a tree-like format:
 - Subfolders are preceded by "├─" with additional "│" characters showing the nesting level
 - To reference a complete path, combine the folder names with "/" separators (e.g., "Category/Subcategory")
 
-If one of the existing folders or subfolders fits well, use the full path (e.g., 'Category/Subcategory') for that section of the tree. Otherwise, create an appropriate category path.`
+If one of the existing folders or subfolders fits well, use it. Otherwise, create an appropriate new category path.`
     }
 
     const prompt = `You are an expert bookmark categorizer. Your task is to analyze the following webpage information and categorize it appropriately.
