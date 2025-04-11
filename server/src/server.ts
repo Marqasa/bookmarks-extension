@@ -64,6 +64,7 @@ app.post("/api/categorize", async (req: Request, res: Response) => {
 
   // Fetch and extract metadata
   let description: string = "No description found"
+  let keywords: string = "No keywords found"
 
   try {
     // Add timeout to fetch
@@ -83,6 +84,8 @@ app.post("/api/categorize", async (req: Request, res: Response) => {
       const $ = cheerio.load(html)
       description =
         $('meta[name="description"]').attr("content") || "No description found"
+      keywords =
+        $('meta[name="keywords"]').attr("content") || "No keywords found"
     }
   } catch (error) {
     console.error("Error processing URL:", error)
@@ -109,6 +112,7 @@ If one of the existing folders or subfolders fits well, use the full path (e.g.,
 URL: ${url}
 Title: ${title}
 Description: ${description}
+Keywords: ${keywords}
 
 ${folderStructurePrompt}
 
