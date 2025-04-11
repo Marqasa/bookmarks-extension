@@ -28,59 +28,44 @@ function updateIcon() {
   })
 }
 
-/*
- * Add or remove the bookmark on the current page.
- */
-async function toggleBookmark() {
-  if (currentBookmark) {
-    chrome.bookmarks.remove(currentBookmark.id)
-    chrome.notifications.create({
-      type: "basic",
-      iconUrl: "icons/star-empty-38.png",
-      title: "Bookmark Removed",
-      message: "The bookmark has been removed successfully.",
-      priority: 0,
-    })
-  } else if (currentTab.url) {
-    // First, create the bookmark immediately without waiting for the category
-    const initialBookmark = await chrome.bookmarks.create({
-      title: currentTab.title || "",
-      url: currentTab.url,
-    })
-
-    // Show initial notification
-    chrome.notifications.create({
-      type: "basic",
-      iconUrl: "icons/star-filled-38.png",
-      title: "Bookmark Added",
-      message: "Bookmark has been added. Categorizing...",
-      priority: 0,
-    })
-
-    // Then, get the category in the background
-    getCategory(currentTab.url, currentTab.title ?? "")
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.action === "getCategory") {
+    getCategory(message.url, message.title)
       .then((result) => {
-        // Update the bookmark with any improved title/url from the API
-        moveBookmark(initialBookmark.id, result)
-
-        // Show category notification
-        chrome.notifications.create({
-          type: "basic",
-          iconUrl: "icons/star-filled-38.png",
-          title: "Bookmark Categorized",
-          message: `Bookmark moved to category: ${result}`,
-          priority: 0,
-        })
+        // Find the newly created bookmark
+        chrome.bookmarks.search({ url: message.url })
+          .then((bookmarks) => {
+            if (bookmarks.length > 0) {
+              // Move the bookmark to the appropriate category
+              moveBookmark(bookmarks[0].id, result)
+                .then(() => {
+                  // Show category notification
+                  chrome.notifications.create({
+                    type: "basic",
+                    iconUrl: "icons/star-filled-38.png",
+                    title: "Bookmark Categorized",
+                    message: `Bookmark moved to category: ${result}`,
+                    priority: 0,
+                  })
+                  
+                  sendResponse({ success: true, category: result });
+                })
+                .catch((error) => {
+                  console.error("Error moving bookmark:", error);
+                  sendResponse({ success: false, error: error.message });
+                });
+            }
+          });
       })
       .catch((error) => {
-        console.error("Error categorizing bookmark:", error)
-      })
-
-    // Update currentBookmark to reflect the newly added bookmark
-    currentBookmark = initialBookmark
-    updateIcon()
+        console.error("Error categorizing bookmark:", error);
+        sendResponse({ success: false, error: error.message });
+      });
+      
+    return true; // Required to use sendResponse asynchronously
   }
-}
+});
 
 /*
  * Switches currentTab and currentBookmark to reflect the currently active tab
@@ -122,9 +107,6 @@ function updateAddonStateForActiveTab() {
   })
   gettingActiveTab.then(updateTab)
 }
-
-// Listen for clicks on the action icon
-chrome.action.onClicked.addListener(toggleBookmark)
 
 // Listen for bookmarks being created
 chrome.bookmarks.onCreated.addListener(updateAddonStateForActiveTab)

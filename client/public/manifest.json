@@ -9,7 +9,8 @@
   },
   "action": {
     "default_icon": "icons/star-empty-38.png",
-    "default_title": "AI Bookmark Manager"
+    "default_title": "AI Bookmark Manager",
+    "default_popup": "index.html"
   },
   "permissions": ["bookmarks", "tabs", "notifications"],
   "background": {
