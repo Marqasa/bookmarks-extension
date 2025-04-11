@@ -4,14 +4,16 @@ A Chrome extension that uses AI to automatically categorize and organize your bo
 
 ## Features
 
-- **One-Click Bookmarking**: Add bookmarks with a single click
-- **AI-Powered Categorization**: Automatically organizes bookmarks into appropriate folders
-- **Smart Hierarchy**: Creates intelligent category paths based on webpage content
-- **User-Friendly Interface**: Simple icons indicate bookmark status
+- **Smart Bookmarking**: Add or remove bookmarks with one click
+- **AI Categorization**: Automatically place bookmarks in appropriate folders
+- **Sorting Options**: Organize bookmarks by type and alphabetically
+- **User Preferences**: Save settings and customize organization behavior
+- **Dark Mode**: Seamless integration with browser theme preferences
 
 ## Project Structure
 
 - **client/**: Chrome extension frontend
+  - React interface for user interactions
   - Background service worker for extension functionality
 - **server/**: Backend API
   - Express server for AI processing
@@ -22,6 +24,8 @@ A Chrome extension that uses AI to automatically categorize and organize your bo
 ### Client
 
 - TypeScript
+- React
+- Tailwind CSS
 - Chrome Extension API
 - Vite for building
 
