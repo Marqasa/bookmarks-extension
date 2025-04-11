@@ -12,7 +12,7 @@
     "default_title": "AI Bookmark Manager",
     "default_popup": "index.html"
   },
-  "permissions": ["bookmarks", "tabs", "notifications"],
+  "permissions": ["bookmarks", "tabs", "notifications", "storage"],
   "background": {
     "type": "module",
     "service_worker": "background.js"

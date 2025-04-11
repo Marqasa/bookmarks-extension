@@ -1,6 +1,3 @@
-import { getCategory } from "../../helpers/getCategory"
-import { moveBookmark } from "../../helpers/moveBookmark"
-
 let currentTab: chrome.tabs.Tab
 let currentBookmark: chrome.bookmarks.BookmarkTreeNode | undefined
 
@@ -27,45 +24,6 @@ function updateIcon() {
     tabId: currentTab.id,
   })
 }
-
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.action === "getCategory") {
-    getCategory(message.url, message.title)
-      .then((result) => {
-        // Find the newly created bookmark
-        chrome.bookmarks.search({ url: message.url })
-          .then((bookmarks) => {
-            if (bookmarks.length > 0) {
-              // Move the bookmark to the appropriate category
-              moveBookmark(bookmarks[0].id, result)
-                .then(() => {
-                  // Show category notification
-                  chrome.notifications.create({
-                    type: "basic",
-                    iconUrl: "icons/star-filled-38.png",
-                    title: "Bookmark Categorized",
-                    message: `Bookmark moved to category: ${result}`,
-                    priority: 0,
-                  })
-                  
-                  sendResponse({ success: true, category: result });
-                })
-                .catch((error) => {
-                  console.error("Error moving bookmark:", error);
-                  sendResponse({ success: false, error: error.message });
-                });
-            }
-          });
-      })
-      .catch((error) => {
-        console.error("Error categorizing bookmark:", error);
-        sendResponse({ success: false, error: error.message });
-      });
-      
-    return true; // Required to use sendResponse asynchronously
-  }
-});
 
 /*
  * Switches currentTab and currentBookmark to reflect the currently active tab
