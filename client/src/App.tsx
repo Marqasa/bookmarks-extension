@@ -14,6 +14,63 @@ function App() {
   const [categorizeBookmarks, setCategorizeBookmarks] = useState<boolean>(true)
   const [isRecategorizing, setIsRecategorizing] = useState<boolean>(false)
 
+  // Helper functions
+  const updateBookmarkPath = async (bookmarkId: string | null) => {
+    if (bookmarkId) {
+      const path = await getBookmarkPath(bookmarkId)
+      setBookmarkPath(path)
+    } else {
+      setBookmarkPath("")
+    }
+  }
+
+  const handleSortBookmarks = async (mode: SortMode) => {
+    try {
+      await sortBookmarks(mode)
+    } catch (error) {
+      console.error("Error sorting bookmarks:", error)
+    }
+  }
+
+  const createNotification = (
+    iconUrl: string,
+    title: string,
+    message: string,
+  ) => {
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl,
+      title,
+      message,
+      priority: 0,
+    })
+  }
+
+  const savePreference = async <T extends boolean | SortMode>(
+    key: string,
+    value: T,
+  ) => {
+    await chrome.storage.sync.set({ [key]: value })
+  }
+
+  const createBookmark = async (url: string, title: string | undefined) => {
+    return await chrome.bookmarks.create({
+      title,
+      url,
+    })
+  }
+
+  const performWithLoading = async (operation: () => Promise<void>) => {
+    setIsLoading(true)
+    try {
+      await operation()
+    } catch (error) {
+      console.error("Operation failed:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
     const checkBookmarkStatus = async () => {
       try {
@@ -30,12 +87,7 @@ function App() {
           setCurrentBookmark(foundBookmark)
 
           // Fetch the bookmark path if bookmark exists
-          if (foundBookmark) {
-            const path = await getBookmarkPath(foundBookmark.id)
-            setBookmarkPath(path)
-          } else {
-            setBookmarkPath("")
-          }
+          await updateBookmarkPath(foundBookmark?.id || null)
         } else {
           setCurrentBookmark(null)
           setBookmarkPath("")
@@ -54,7 +106,7 @@ function App() {
 
         // Auto-sort bookmarks if enabled
         if (result.autoSort) {
-          await sortBookmarks(result.sortMode)
+          await handleSortBookmarks(result.sortMode)
         }
 
         setIsLoading(false)
@@ -70,107 +122,76 @@ function App() {
   const handleToggleBookmark = async () => {
     if (!currentTab?.url) return
 
-    try {
-      setIsLoading(true)
-
+    await performWithLoading(async () => {
       if (currentBookmark) {
         await chrome.bookmarks.remove(currentBookmark.id)
-        chrome.notifications.create({
-          type: "basic",
-          iconUrl: "icons/star-empty-38.png",
-          title: "Bookmark Removed",
-          message: "The bookmark has been removed successfully.",
-          priority: 0,
-        })
+        createNotification(
+          "icons/star-empty-38.png",
+          "Bookmark Removed",
+          "The bookmark has been removed successfully.",
+        )
         setCurrentBookmark(null)
         setBookmarkPath("")
       } else {
-        const newBookmark = await chrome.bookmarks.create({
-          title: currentTab.title || "",
-          url: currentTab.url,
-        })
+        const newBookmark = await createBookmark(
+          currentTab.url!,
+          currentTab.title,
+        )
 
-        chrome.notifications.create({
-          type: "basic",
-          iconUrl: "icons/star-filled-38.png",
-          title: "Bookmark Added",
-          message: categorizeBookmarks
+        createNotification(
+          "icons/star-filled-38.png",
+          "Bookmark Added",
+          categorizeBookmarks
             ? "Bookmark has been added. Categorizing..."
             : "Bookmark has been added successfully.",
-          priority: 0,
-        })
+        )
 
         if (categorizeBookmarks) {
           try {
-            await categorizeBookmark(currentTab.url, currentTab.title ?? "")
-
-            // Update bookmark path after categorization
-            const path = await getBookmarkPath(newBookmark.id)
-            setBookmarkPath(path)
+            await categorizeBookmark(currentTab.url!, currentTab.title ?? "")
+            await updateBookmarkPath(newBookmark.id)
           } catch (error) {
             console.error("Error categorizing bookmark:", error)
           }
-        } else {
-          // Set an empty path for uncategorized bookmarks
-          setBookmarkPath("")
         }
 
         // Sort bookmarks if auto-sort is enabled
         if (autoSort) {
-          try {
-            await sortBookmarks(sortMode)
-          } catch (error) {
-            console.error("Error sorting bookmarks after adding:", error)
-          }
+          await handleSortBookmarks(sortMode)
         }
 
         setCurrentBookmark(newBookmark)
       }
-
-      setIsLoading(false)
-    } catch (error) {
-      console.error("Error toggling bookmark:", error)
-      setIsLoading(false)
-    }
+    })
   }
 
   const handleToggleAutoSort = async (value: boolean) => {
     setAutoSort(value)
-    await chrome.storage.sync.set({ autoSort: value })
+    await savePreference("autoSort", value)
 
     // Sort bookmarks immediately when turned on
     if (value) {
-      try {
-        setIsLoading(true)
-        await sortBookmarks(sortMode)
-        setIsLoading(false)
-      } catch (error) {
-        console.error("Error sorting bookmarks:", error)
-        setIsLoading(false)
-      }
+      await performWithLoading(async () => {
+        await handleSortBookmarks(sortMode)
+      })
     }
   }
 
   const handleChangeSortMode = async (value: SortMode) => {
     setSortMode(value)
-    await chrome.storage.sync.set({ sortMode: value })
+    await savePreference("sortMode", value)
 
     // Re-sort if auto-sort is enabled
     if (autoSort) {
-      try {
-        setIsLoading(true)
-        await sortBookmarks(value)
-        setIsLoading(false)
-      } catch (error) {
-        console.error("Error sorting bookmarks:", error)
-        setIsLoading(false)
-      }
+      await performWithLoading(async () => {
+        await handleSortBookmarks(value)
+      })
     }
   }
 
   const handleToggleCategorize = async (value: boolean) => {
     setCategorizeBookmarks(value)
-    await chrome.storage.sync.set({ categorizeBookmarks: value })
+    await savePreference("categorizeBookmarks", value)
   }
 
   const handleRecategorize = async () => {
@@ -183,35 +204,25 @@ function App() {
       await chrome.bookmarks.remove(currentBookmark.id)
 
       // Create new bookmark with auto-categorization
-      const newBookmark = await chrome.bookmarks.create({
-        title: currentTab.title || "",
-        url: currentTab.url,
-      })
+      const newBookmark = await createBookmark(currentTab.url, currentTab.title)
 
       await categorizeBookmark(currentTab.url, currentTab.title ?? "")
 
       // Sort bookmarks if auto-sort is enabled
       if (autoSort) {
-        try {
-          await sortBookmarks(sortMode)
-        } catch (error) {
-          console.error("Error sorting bookmarks after recategorizing:", error)
-        }
+        await handleSortBookmarks(sortMode)
       }
 
       setCurrentBookmark(newBookmark)
 
       // Update the bookmark path
-      const path = await getBookmarkPath(newBookmark.id)
-      setBookmarkPath(path)
+      await updateBookmarkPath(newBookmark.id)
 
-      chrome.notifications.create({
-        type: "basic",
-        iconUrl: "icons/star-filled-38.png",
-        title: "Bookmark Recategorized",
-        message: "The bookmark has been recategorized successfully.",
-        priority: 0,
-      })
+      createNotification(
+        "icons/star-filled-38.png",
+        "Bookmark Recategorized",
+        "The bookmark has been recategorized successfully.",
+      )
 
       setIsRecategorizing(false)
     } catch (error) {
