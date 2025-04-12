@@ -30,6 +30,48 @@ app.post("/api/chat", async (req: Request, res: Response) => {
   result.pipeDataStreamToResponse(res)
 })
 
+// Define schema for the categorization-relevant information
+const CategoryInfoSchema = z.object({
+  topicSummary: z
+    .string()
+    .describe("A brief description of what the webpage is about"),
+  contentType: z
+    .string()
+    .describe(
+      "The general format or type of the content (article, blog, tool, reference, etc.)"
+    ),
+  domain: z
+    .string()
+    .describe("The general subject area or field the content belongs to"),
+  keywords: z
+    .array(z.string())
+    .describe("Important terms related to the content"),
+  audience: z.string().describe("Who the content seems to be targeted towards"),
+  purpose: z
+    .string()
+    .describe(
+      "What the content is trying to accomplish (inform, educate, entertain, sell, etc.)"
+    ),
+})
+
+type CategoryInfo = z.infer<typeof CategoryInfoSchema>
+
+/**
+ * Extracts the HTML head element content, removing irrelevant tags
+ */
+function extractHeadContent($: cheerio.CheerioAPI): string {
+  // Clone the head element to avoid modifying the original document
+  const headClone = $("head").clone()
+
+  // Remove irrelevant tags
+  headClone.find("link").remove()
+  headClone.find("script").remove()
+  headClone.find("style").remove()
+
+  // Return the cleaned-up head content
+  return headClone.html() || ""
+}
+
 app.post("/api/categorize", async (req: Request, res: Response) => {
   const { url, title, folderStructure } = req.body as {
     url: string
@@ -62,36 +104,57 @@ app.post("/api/categorize", async (req: Request, res: Response) => {
     return
   }
 
-  // Fetch and extract metadata
-  let description: string = "No description found"
-  let keywords: string = "No keywords found"
-
   try {
-    // Add timeout to fetch
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    // Extract head content for analysis
+    let headContent = ""
+    let categoryInfo: CategoryInfo | null = null
 
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Bookmark Categorizer Bot",
-      },
-    })
-    clearTimeout(timeoutId)
+    try {
+      // Add timeout to fetch
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-    if (response.ok) {
-      const html = await response.text()
-      const $ = cheerio.load(html)
-      description =
-        $('meta[name="description"]').attr("content") || "No description found"
-      keywords =
-        $('meta[name="keywords"]').attr("content") || "No keywords found"
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Bookmark Categorizer Bot",
+        },
+      })
+      clearTimeout(timeoutId)
+
+      if (response.ok) {
+        const html = await response.text()
+        const $ = cheerio.load(html)
+        headContent = extractHeadContent($)
+
+        // If we have head content, analyze it with the LLM
+        if (headContent) {
+          // First, extract useful information from the head content
+          const metadataPrompt = `You are an expert metadata analyzer. Your task is to analyze an HTML head element and extract the most useful information for bookmark categorization.
+
+URL: ${url}
+Title: ${title}
+
+HTML Head Content:
+${headContent}
+
+Based on this metadata, identify and extract the most relevant information that would help categorize this bookmark properly.
+Focus on the main topic, content type, domain, and key themes. Ignore irrelevant technical metadata.`
+
+          const { object } = await generateObject({
+            model: openai.responses("gpt-4o-mini"),
+            schema: CategoryInfoSchema,
+            prompt: metadataPrompt,
+          })
+
+          categoryInfo = object
+        }
+      }
+    } catch (error) {
+      console.error("Error processing URL:", error)
+      // Continue with categorization even if metadata extraction fails
     }
-  } catch (error) {
-    console.error("Error processing URL:", error)
-  }
 
-  try {
     // Process folder structure for the prompt
     let folderStructurePrompt = ""
     if (folderStructure && typeof folderStructure === "object") {
@@ -111,8 +174,18 @@ If one of the existing folders or subfolders fits well, use it. Otherwise, creat
 
 URL: ${url}
 Title: ${title}
-Description: ${description}
-Keywords: ${keywords}
+${
+  categoryInfo
+    ? `
+Topic Summary: ${categoryInfo.topicSummary}
+Content Type: ${categoryInfo.contentType}
+Domain: ${categoryInfo.domain}
+Keywords: ${categoryInfo.keywords.join(", ")}
+Audience: ${categoryInfo.audience}
+Purpose: ${categoryInfo.purpose}
+`
+    : "No additional metadata available"
+}
 
 ${folderStructurePrompt}
 
