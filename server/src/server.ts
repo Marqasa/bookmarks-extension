@@ -1,6 +1,6 @@
 import "dotenv/config"
-import { CoreMessage, generateObject, streamText } from "ai"
 import { FolderStructure } from "shared/types/FolderStructure"
+import { generateObject } from "ai"
 import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 import * as cheerio from "cheerio"
@@ -13,22 +13,6 @@ const app = express()
 app.use(cors())
 app.use(bodyParser.urlencoded())
 app.use(bodyParser.json())
-
-app.post("/api/chat", async (req: Request, res: Response) => {
-  const { messages } = req.body as { messages: CoreMessage[] }
-
-  if (!messages) {
-    res.status(400).send("Bad Request: Missing messages")
-    return
-  }
-
-  const result = streamText({
-    model: openai("gpt-4o-mini"),
-    messages,
-  })
-
-  result.pipeDataStreamToResponse(res)
-})
 
 // Define schema for the categorization-relevant information
 const CategoryInfoSchema = z.object({
